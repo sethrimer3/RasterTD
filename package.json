@@ -1,7 +1,7 @@
 {
-  "name": "equatoria-idle",
+  "name": "rastertd",
   "version": "0.1.0",
-  "description": "Equatoria Idle — a mobile-first idle game with equation progression and gem particles",
+  "description": "RasterTD — a physics-based tower defense game",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -11,15 +11,15 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/sethrimer3/Equatoria_Idle.git"
+    "url": "git+https://github.com/sethrimer3/RasterTD.git"
   },
-  "keywords": ["idle", "game", "math", "equation"],
+  "keywords": ["tower-defense", "game", "physics"],
   "author": "",
   "license": "ISC",
   "bugs": {
-    "url": "https://github.com/sethrimer3/Equatoria_Idle/issues"
+    "url": "https://github.com/sethrimer3/RasterTD/issues"
   },
-  "homepage": "https://github.com/sethrimer3/Equatoria_Idle#readme",
+  "homepage": "https://github.com/sethrimer3/RasterTD#readme",
   "devDependencies": {
     "typescript": "^6.0.2",
     "vite": "^8.0.3"

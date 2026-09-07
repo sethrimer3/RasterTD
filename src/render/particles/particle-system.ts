@@ -59,7 +59,7 @@ import type { ForgeParticleInfo } from '../../sim/forge/forge-logic';
 
 // ─── Types ──────────────────────────────────────────────────────
 
-export interface EquatoriaParticle {
+export interface RasterParticle {
   isActive: boolean;
   x: number;
   y: number;
@@ -85,7 +85,7 @@ export interface EquatoriaParticle {
 }
 
 export interface ActiveMerge {
-  particles: EquatoriaParticle[];
+  particles: RasterParticle[];
   targetX: number;
   targetY: number;
   outputTierId: TierId;
@@ -105,18 +105,18 @@ export interface Shockwave {
 }
 
 /** Backward-compatible alias. */
-export type Particle = EquatoriaParticle;
+export type Particle = RasterParticle;
 
 // ─── Spatial hash grid ──────────────────────────────────────────
 
 const GRID_CELL_SIZE = SHOCKWAVE_MAX_RADIUS;
 
 interface SpatialGrid {
-  cells: Map<string, EquatoriaParticle[]>;
+  cells: Map<string, RasterParticle[]>;
 }
 
-function buildSpatialGrid(particles: EquatoriaParticle[]): SpatialGrid {
-  const cells = new Map<string, EquatoriaParticle[]>();
+function buildSpatialGrid(particles: RasterParticle[]): SpatialGrid {
+  const cells = new Map<string, RasterParticle[]>();
   for (const p of particles) {
     const cx = Math.floor(p.x / GRID_CELL_SIZE);
     const cy = Math.floor(p.y / GRID_CELL_SIZE);
@@ -128,8 +128,8 @@ function buildSpatialGrid(particles: EquatoriaParticle[]): SpatialGrid {
   return { cells };
 }
 
-function queryNearby(grid: SpatialGrid, x: number, y: number, radius: number): EquatoriaParticle[] {
-  const result: EquatoriaParticle[] = [];
+function queryNearby(grid: SpatialGrid, x: number, y: number, radius: number): RasterParticle[] {
+  const result: RasterParticle[] = [];
   const cx0 = Math.floor((x - radius) / GRID_CELL_SIZE);
   const cx1 = Math.floor((x + radius) / GRID_CELL_SIZE);
   const cy0 = Math.floor((y - radius) / GRID_CELL_SIZE);
@@ -152,7 +152,7 @@ function queryNearby(grid: SpatialGrid, x: number, y: number, radius: number): E
 // ─── Particle helpers ───────────────────────────────────────────
 
 function initParticle(
-  p: EquatoriaParticle,
+  p: RasterParticle,
   tierId: TierId,
   sizeIndex: SizeIndex,
   spawnX: number,
@@ -185,7 +185,7 @@ function initParticle(
   p.nextVeerTimeMs = nowMs + VEER_INTERVAL_MIN_MS + Math.random() * (VEER_INTERVAL_MAX_MS - VEER_INTERVAL_MIN_MS);
 }
 
-function createBlankParticle(): EquatoriaParticle {
+function createBlankParticle(): RasterParticle {
   return {
     isActive: false,
     x: 0, y: 0, vx: 0, vy: 0,
@@ -212,7 +212,7 @@ function createBlankParticle(): EquatoriaParticle {
 // ─── ParticleSystem class ────────────────────────────────────────
 
 export class ParticleSystem {
-  particles: EquatoriaParticle[] = [];
+  particles: RasterParticle[] = [];
   activeMerges: ActiveMerge[] = [];
   shockwaves: Shockwave[] = [];
   forgeRotation = 0;
@@ -220,13 +220,13 @@ export class ParticleSystem {
   mergeCooldownFrames = 0;
   frameCount = 0;
 
-  private readonly _pool: EquatoriaParticle[] = [];
+  private readonly _pool: RasterParticle[] = [];
 
-  private _acquireParticle(): EquatoriaParticle {
+  private _acquireParticle(): RasterParticle {
     return this._pool.pop() ?? createBlankParticle();
   }
 
-  private _releaseParticle(p: EquatoriaParticle): void {
+  private _releaseParticle(p: RasterParticle): void {
     p.isActive = false;
     this._pool.push(p);
   }
@@ -329,7 +329,7 @@ export class ParticleSystem {
   }
 
   private _updateParticlePhysics(
-    p: EquatoriaParticle,
+    p: RasterParticle,
     clampedDelta: number,
     nowMs: number,
     generators: readonly GeneratorInfo[],
@@ -466,7 +466,7 @@ export class ParticleSystem {
   private _attemptMerge(generators: readonly GeneratorInfo[], nowMs: number): void {
     if (this.activeMerges.length > 0 || this.mergeCooldownFrames > 0) return;
 
-    const byTierAndSize = new Map<string, EquatoriaParticle[]>();
+    const byTierAndSize = new Map<string, RasterParticle[]>();
     for (const p of this.particles) {
       if (p.isMerging) continue;
       const gen = this._getGeneratorForTier(p.tierId, generators);
@@ -480,7 +480,7 @@ export class ParticleSystem {
       group.push(p);
     }
 
-    const candidates: { tierId: TierId; sizeIndex: SizeIndex; group: EquatoriaParticle[] }[] = [];
+    const candidates: { tierId: TierId; sizeIndex: SizeIndex; group: RasterParticle[] }[] = [];
     for (const [key, group] of byTierAndSize) {
       if (group.length < MERGE_THRESHOLD) continue;
       const dashIdx = key.lastIndexOf('-');
@@ -514,9 +514,9 @@ export class ParticleSystem {
     });
   }
 
-  private _selectRandom(group: EquatoriaParticle[], count: number): EquatoriaParticle[] {
+  private _selectRandom(group: RasterParticle[], count: number): RasterParticle[] {
     const pool = group.slice();
-    const selected: EquatoriaParticle[] = [];
+    const selected: RasterParticle[] = [];
     const target = Math.min(count, pool.length);
     for (let i = 0; i < target; i++) {
       const idx = Math.floor(Math.random() * pool.length);
@@ -527,7 +527,7 @@ export class ParticleSystem {
   }
 
   private _processActiveMerges(nowMs: number, generators: readonly GeneratorInfo[]): void {
-    const toRemove = new Set<EquatoriaParticle>();
+    const toRemove = new Set<RasterParticle>();
     this.activeMerges = this.activeMerges.filter(merge => {
       const allGathered = merge.particles.every(p => {
         const dx = p.x - merge.targetX;
@@ -575,7 +575,7 @@ export class ParticleSystem {
     });
 
     if (toRemove.size > 0) {
-      const remaining: EquatoriaParticle[] = [];
+      const remaining: RasterParticle[] = [];
       for (const p of this.particles) {
         if (toRemove.has(p)) this._releaseParticle(p);
         else remaining.push(p);
@@ -587,7 +587,7 @@ export class ParticleSystem {
   private _enforceParticleLimit(generators: readonly GeneratorInfo[], nowMs: number): void {
     if (this.particles.length < PERFORMANCE_THRESHOLD) return;
 
-    const smallByTier = new Map<TierId, EquatoriaParticle[]>();
+    const smallByTier = new Map<TierId, RasterParticle[]>();
     for (const p of this.particles) {
       if (p.sizeIndex !== SMALL_SIZE_INDEX || p.isMerging) continue;
       const gen = this._getGeneratorForTier(p.tierId, generators);
@@ -600,7 +600,7 @@ export class ParticleSystem {
       arr.push(p);
     }
 
-    const toRemove = new Set<EquatoriaParticle>();
+    const toRemove = new Set<RasterParticle>();
     for (const [tierId, group] of smallByTier) {
       while (group.length >= MERGE_THRESHOLD && this.particles.length - toRemove.size > PERFORMANCE_THRESHOLD) {
         const batch = group.splice(0, MERGE_THRESHOLD);
@@ -613,7 +613,7 @@ export class ParticleSystem {
       }
     }
     if (toRemove.size > 0) {
-      const remaining: EquatoriaParticle[] = [];
+      const remaining: RasterParticle[] = [];
       for (const p of this.particles) {
         if (toRemove.has(p)) this._releaseParticle(p);
         else remaining.push(p);
@@ -661,7 +661,7 @@ export class ParticleSystem {
   ): void {
     void crunchState;
     const crunchParticles = this.particles.filter(p => p.isForgeCrunchParticle);
-    const toRemove = new Set<EquatoriaParticle>();
+    const toRemove = new Set<RasterParticle>();
 
     for (const p of crunchParticles) {
       const output = getCrunchOutput(p.tierId, p.sizeIndex);
@@ -681,7 +681,7 @@ export class ParticleSystem {
     }
 
     if (toRemove.size > 0) {
-      const remaining: EquatoriaParticle[] = [];
+      const remaining: RasterParticle[] = [];
       for (const p of this.particles) {
         if (toRemove.has(p)) this._releaseParticle(p);
         else remaining.push(p);

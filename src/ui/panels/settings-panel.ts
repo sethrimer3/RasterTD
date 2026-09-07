@@ -86,7 +86,7 @@ export function createSettingsPanel(
   const credits = document.createElement('div');
   credits.className = 'credits';
   credits.innerHTML = `
-    <p>Equatoria Idle v0.1.0</p>
+    <p>RasterTD v0.1.0</p>
     <p>A mathematical idle adventure</p>
   `;
   panel.appendChild(credits);

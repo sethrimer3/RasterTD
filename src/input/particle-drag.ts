@@ -1,4 +1,4 @@
-import type { EquatoriaParticle } from '../render/particles/particle-system';
+import type { RasterParticle } from '../render/particles/particle-system';
 import {
   INTERACTION_RADIUS_FRACTION,
   DRAG_RELEASE_STILLNESS_MS,
@@ -34,7 +34,7 @@ export function handleParticleDragDown(
   canvasX: number,
   canvasY: number,
   nowMs: number,
-  particles: EquatoriaParticle[],
+  particles: RasterParticle[],
   canvasWidth: number,
   canvasHeight: number,
 ): void {
@@ -66,7 +66,7 @@ export function handleParticleDragMove(
   canvasX: number,
   canvasY: number,
   nowMs: number,
-  particles: EquatoriaParticle[],
+  particles: RasterParticle[],
 ): void {
   const dt = nowMs - state.prevTimeMs;
   if (dt > 0) {
@@ -92,7 +92,7 @@ export function handleParticleDragUp(
   canvasX: number,
   canvasY: number,
   nowMs: number,
-  particles: EquatoriaParticle[],
+  particles: RasterParticle[],
 ): void {
   void canvasX;
   void canvasY;

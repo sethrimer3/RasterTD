@@ -1,6 +1,8 @@
-# Equatoria Idle
+# RasterTD
 
-A mobile-first idle game where you upgrade a mathematical equation, generate coloured motes, and progress through rainbow-tiered resources.
+A physics-based tower defense game. RasterTD reuses some systems from the earlier
+project *Equatoria Idle* (particle simulation, rendering, save/load), but much of
+the idle-game content is being removed and reworked around tower-defense gameplay.
 
 ## Quick Start
 

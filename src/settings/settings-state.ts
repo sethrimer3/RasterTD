@@ -17,7 +17,7 @@ export function createDefaultSettings(): SettingsState {
   };
 }
 
-const SETTINGS_KEY = 'equatoria_settings';
+const SETTINGS_KEY = 'rastertd_settings';
 
 export function loadSettings(): SettingsState {
   try {

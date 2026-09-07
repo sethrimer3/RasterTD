@@ -26,7 +26,7 @@ import {
 
 // ─── Minimal particle interface ──────────────────────────────────
 // Using a structural interface avoids a circular import with
-// particle-system.ts.  EquatoriaParticle satisfies this type.
+// particle-system.ts.  RasterParticle satisfies this type.
 
 interface EulerParticle {
   x: number;
@@ -106,7 +106,7 @@ function queryEulerNearby(grid: EulerGrid, x: number, y: number): EulerParticle[
  *  - Pointer-locked (dragged) particles are immune.
  *  - Force is one-directional: only high-tier → low-tier.
  *
- * @param particles   Active particle array (EquatoriaParticle[] works).
+ * @param particles   Active particle array (RasterParticle[] works).
  * @param clampedDelta  Frame delta ratio (deltaMs / (1000/60)), clamped.
  */
 export function applyEulerFluidForces(

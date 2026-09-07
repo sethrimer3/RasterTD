@@ -4,7 +4,7 @@ import { createGameState } from '../sim/game-state';
 
 // ─── Save format ────────────────────────────────────────────────
 
-const SAVE_KEY = 'equatoria_save';
+const SAVE_KEY = 'rastertd_save';
 const SAVE_VERSION = 2;
 
 interface SaveData {
