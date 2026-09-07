@@ -317,6 +317,53 @@ html, body {
   line-height: 1.6;
 }
 
+/* ── Prestige / run panels ──────────────────────────────────── */
+.currency-display {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 8px;
+  letter-spacing: 1px;
+}
+
+.upgrade-btn small {
+  color: var(--text-secondary);
+  font-weight: 400;
+  font-size: 11px;
+}
+
+.run-panel .settings-btn[hidden] {
+  display: none;
+}
+
+/* ── Run HUD strip (non-blocking, over the field) ────────────── */
+#run-hud {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--tab-height) + var(--safe-bottom));
+  z-index: 6;
+  padding: 8px;
+  pointer-events: none;
+}
+
+#run-hud .run-panel {
+  background: rgba(8, 8, 16, 0.78);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--border-radius);
+  padding: 8px 10px;
+  margin: 0;
+  pointer-events: auto;
+}
+
+#run-hud .panel-title {
+  margin-bottom: 4px;
+}
+
+#run-hud .settings-btn {
+  margin-top: 6px;
+}
+
 /* ── Tab bar (bottom, always visible) ────────────────────────── */
 .tab-bar {
   position: absolute;

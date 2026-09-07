@@ -49,3 +49,43 @@ export const EQUATION_FORGE_COST = 50;
 export function tierUnlockCost(tierIndex: number): number {
   return Math.floor(50 * Math.pow(10, tierIndex));
 }
+
+// ─── Tower-defense tunables ─────────────────────────────────────
+// Waves grow exponentially in threat and in prestige payout.
+
+/** Enemies in wave 1 (before per-level difficulty scaling). */
+export const WAVE_BASE_ENEMY_COUNT = 6;
+/** Per-wave growth of enemy count. */
+export const WAVE_COUNT_GROWTH = 1.15;
+/** Per-wave growth of enemy hit points. */
+export const WAVE_HP_GROWTH = 1.35;
+/** Per-wave growth of enemy speed. */
+export const WAVE_SPEED_GROWTH = 1.03;
+/** Delay between individual enemy spawns while a wave spawns (ms). */
+export const WAVE_SPAWN_INTERVAL_MS = 550;
+/** Breather between clearing a wave and the next one auto-starting (ms). */
+export const WAVE_INTERMISSION_MS = 6000;
+
+/** Enemy hit points in wave 1 (before scaling). */
+export const ENEMY_BASE_HP = 10;
+/** Enemy travel speed along the path in field px/sec (wave 1, before scaling). */
+export const ENEMY_BASE_SPEED = 26;
+/** Enemy draw radius in field px. */
+export const ENEMY_RADIUS = 4;
+/** Damage dealt to the base when an enemy reaches it. */
+export const ENEMY_BASE_DAMAGE = 1;
+
+/** Prestige payout curve: cumReward(w) = floor(SCALE * rewardMult * (G^w - 1) / (G - 1)). */
+export const PRESTIGE_REWARD_GROWTH = 1.32;
+export const PRESTIGE_REWARD_SCALE = 0.95;
+
+/**
+ * Cumulative prestige currency for reaching wave `wave` on a level with the given
+ * reward multiplier. A run awards the difference between this at the new highest
+ * wave and this at the previous highest wave.
+ */
+export function cumulativePrestigeReward(wave: number, rewardMult: number): number {
+  if (wave <= 0) return 0;
+  const g = PRESTIGE_REWARD_GROWTH;
+  return Math.floor(PRESTIGE_REWARD_SCALE * rewardMult * (Math.pow(g, wave) - 1) / (g - 1));
+}

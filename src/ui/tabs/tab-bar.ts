@@ -16,7 +16,9 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-  { id: 'field',    label: 'Field',    icon: '◆' },
+  { id: 'levels',   label: 'Levels',   icon: '◆' },
+  { id: 'run',      label: 'Run',      icon: '▸' },
+  { id: 'prestige', label: 'Prestige', icon: '✦' },
   { id: 'settings', label: 'Settings', icon: '☰' },
 ];
 
