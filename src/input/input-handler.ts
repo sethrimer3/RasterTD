@@ -1,35 +1,20 @@
-/** Actions that can be dispatched from input. */
+/** Actions that can be dispatched from input / UI. */
 export type GameAction =
-  | { kind: 'tap'; xScreen: number; yScreen: number }
-  | { kind: 'purchase_upgrade'; upgradeId: string }
-  | { kind: 'unlock_next_tier' }
-  | { kind: 'unlock_equation_forge' }
-  | { kind: 'upgrade_loom'; tierId: string }
   | { kind: 'set_active_tab'; tabId: TabId }
-  | { kind: 'save_game' }
   | { kind: 'reset_game' };
 
-export type TabId = 'equation' | 'looms' | 'resources' | 'settings';
+export type TabId = 'field' | 'settings';
 
 export type ActionHandler = (action: GameAction) => void;
 
 /**
- * Sets up touch and mouse event listeners on the game canvas area.
- * Translates raw input into GameActions.
+ * Placeholder for canvas input wiring. Pointer interaction with the physics
+ * field is currently handled directly in game-app via the particle-drag module.
+ * Returns a cleanup function.
  */
 export function setupInputListeners(
-  tapTarget: HTMLElement,
-  dispatch: ActionHandler,
+  _tapTarget: HTMLElement,
+  _dispatch: ActionHandler,
 ): () => void {
-  const onPointerDown = (e: PointerEvent) => {
-    e.preventDefault();
-    dispatch({ kind: 'tap', xScreen: e.clientX, yScreen: e.clientY });
-  };
-
-  tapTarget.addEventListener('pointerdown', onPointerDown, { passive: false });
-
-  // Cleanup
-  return () => {
-    tapTarget.removeEventListener('pointerdown', onPointerDown);
-  };
+  return () => {};
 }

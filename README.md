@@ -24,24 +24,24 @@ This repository is configured to deploy automatically to **GitHub Pages** with G
 
 The Vite `base` path is resolved automatically in GitHub Actions from `GITHUB_REPOSITORY`, so assets load correctly from the repository pages URL (`https://<user>.github.io/<repo>/`).
 
-## How to Play
+## Status
 
-1. **Tap the equation** on the canvas to earn motes
-2. **Purchase upgrades** to increase motes per tap for each colour tier
-3. **Unlock new tiers** as you accumulate enough resources
-4. **Auto-tap** and **multiplier** upgrades accelerate your progress
+Mid-transition. The idle-game progression (equation tapping, upgrades, resources,
+looms) has been removed. What remains is the physics-field substrate — particle
+simulation, generator/forge attractors, rendering, and input plumbing — which
+tower-defense gameplay (towers, enemies, waves) will be built on top of.
 
 ## Project Structure
 
 ```
 src/
   app/         — game bootstrap and main loop
-  sim/         — simulation (equation, resources, progression)
-  render/      — canvas rendering (equation, particles)
-  ui/          — DOM-based menus, tabs, panels
-  input/       — input event translation
-  data/        — tier definitions, upgrades, balance constants
-  settings/    — user settings and save/load
+  sim/         — physics simulation (particles, forge attractors)
+  render/      — canvas rendering (particles, generators, forge, background)
+  ui/          — DOM-based tabs and panels
+  input/       — pointer / drag input
+  data/        — tier definitions, particle config, balance constants
+  settings/    — user settings and save-slot handling
   util/        — formatting helpers
 ```
 

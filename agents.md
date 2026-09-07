@@ -1,3 +1,5 @@
+> **STALE (pre-RasterTD):** this document describes the Equatoria Idle idle-game systems, most of which were removed in the RasterTD strip. It will be rewritten as tower-defense gameplay is built.
+
 # AI Agent Guidelines for Equatoria Idle
 
 This document defines the required standards for AI coding agents working on the Equatoria Idle repository.

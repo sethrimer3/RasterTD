@@ -50,16 +50,6 @@ export function createSettingsPanel(
   });
   panel.appendChild(shakeRow);
 
-  // Save button
-  const saveBtn = document.createElement('button');
-  saveBtn.className = 'settings-btn';
-  saveBtn.textContent = '💾 Save Game';
-  saveBtn.addEventListener('pointerdown', (e) => {
-    e.stopPropagation();
-    dispatch({ kind: 'save_game' });
-  });
-  panel.appendChild(saveBtn);
-
   // Reset button
   const resetBtn = document.createElement('button');
   resetBtn.className = 'settings-btn danger';
@@ -87,7 +77,7 @@ export function createSettingsPanel(
   credits.className = 'credits';
   credits.innerHTML = `
     <p>RasterTD v0.1.0</p>
-    <p>A mathematical idle adventure</p>
+    <p>A physics-based tower defense game</p>
   `;
   panel.appendChild(credits);
 
