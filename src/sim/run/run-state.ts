@@ -1,44 +1,59 @@
 /**
- * A "run" — one attempt at a level. Waves spawn (each exponentially harder),
- * enemies walk the path to the base, and the run ends when base health hits 0.
- * The highest wave cleared this run drives the prestige payout on exit.
+ * A "run" — one attempt at a level. Waves spawn (each larger, faster, heavier),
+ * enemies are shoved around by towers, and the run ends when base health hits 0.
+ * Enemies have no health: they leave play only by being pushed off the track
+ * (paying a bounty) or by reaching the base (hurting it).
  */
 
 import type { TierId } from '../../data/tiers';
-import { VISIBLE_TIERS } from '../../data/tiers';
 import type { LevelDefinition, Point } from '../../data/levels';
+import type { EnemyKindId } from '../../data/enemies';
+import { ENEMY_KIND_BY_ID } from '../../data/enemies';
 import {
   WAVE_BASE_ENEMY_COUNT,
   WAVE_COUNT_GROWTH,
-  WAVE_HP_GROWTH,
+  WAVE_MASS_GROWTH,
   WAVE_SPEED_GROWTH,
   WAVE_SPAWN_INTERVAL_MS,
   WAVE_INTERMISSION_MS,
-  ENEMY_BASE_HP,
+  BRUTE_WAVE_INTERVAL,
   ENEMY_BASE_SPEED,
   ENEMY_BASE_DAMAGE,
+  STARTING_MONEY,
+  WAVE_CLEAR_BONUS,
 } from '../../data/balance';
-import type { Enemy } from '../enemies';
-import { spawnEnemy, advanceEnemy } from '../enemies';
+import type { Enemy, PathGeometry } from '../enemies';
+import { spawnEnemy, stepEnemy, applyShieldAura, buildPathGeometry } from '../enemies';
+import type { Tower, TowerFx } from '../towers';
 
 export type RunPhase = 'intermission' | 'spawning' | 'wave-active' | 'defeat';
 
 interface QueuedEnemy {
-  hp: number;
-  speed: number;
-  tierId: TierId;
+  kindId: EnemyKindId;
 }
 
 export interface DeathFx {
   x: number;
   y: number;
   tierId: TierId;
+  big: boolean;
 }
+
+/** Particle-burst tint per enemy kind. */
+const KIND_FX_TIER: Record<EnemyKindId, TierId> = {
+  grunt: 'sand',
+  runner: 'citrine',
+  heavy: 'iolite',
+  shielder: 'sapphire',
+  freezer: 'diamond',
+  brute: 'ruby',
+};
 
 export interface RunState {
   levelId: string;
   difficultyMult: number;
   waypointsPx: Point[];
+  geo: PathGeometry;
   basePos: Point;
   baseHealth: number;
   baseMaxHealth: number;
@@ -47,12 +62,19 @@ export interface RunState {
   waveIndex: number;
   highestWaveThisRun: number;
   enemies: Enemy[];
+  towers: Tower[];
+  nextTowerId: number;
+  money: number;
   spawnQueue: QueuedEnemy[];
   spawnTimerMs: number;
   intermissionTimerMs: number;
   nextEnemyId: number;
-  /** Death events for the renderer to consume (base contact / future kills). */
+  /** Wave-scoped enemy scaling, set by startNextWave. */
+  waveSpeedBase: number;
+  waveMassScale: number;
+  /** Consumed by the renderer each frame. */
   deathFx: DeathFx[];
+  fx: TowerFx[];
 }
 
 export function resolveWaypointsPx(
@@ -75,6 +97,7 @@ export function createRun(
     levelId: level.id,
     difficultyMult: level.difficultyMult,
     waypointsPx,
+    geo: buildPathGeometry(waypointsPx),
     basePos: waypointsPx[waypointsPx.length - 1]!,
     baseHealth: maxHealth,
     baseMaxHealth: maxHealth,
@@ -82,16 +105,40 @@ export function createRun(
     waveIndex: 0,
     highestWaveThisRun: 0,
     enemies: [],
+    towers: [],
+    nextTowerId: 1,
+    money: STARTING_MONEY,
     spawnQueue: [],
     spawnTimerMs: 0,
     intermissionTimerMs: WAVE_INTERMISSION_MS,
     nextEnemyId: 1,
+    waveSpeedBase: ENEMY_BASE_SPEED,
+    waveMassScale: 1,
     deathFx: [],
+    fx: [],
   };
 }
 
-function waveTier(wave: number): TierId {
-  return VISIBLE_TIERS[(wave - 1) % VISIBLE_TIERS.length]!.id;
+/** Rebuild path-derived data after a resize. */
+export function rebuildRunGeometry(run: RunState, waypointsPx: Point[]): void {
+  run.waypointsPx = waypointsPx;
+  run.geo = buildPathGeometry(waypointsPx);
+  run.basePos = waypointsPx[waypointsPx.length - 1]!;
+}
+
+/** Kind mix for wave `w`; distribution widens as waves climb. */
+function waveComposition(w: number, count: number): EnemyKindId[] {
+  const out: EnemyKindId[] = [];
+  for (let i = 0; i < count; i++) {
+    const r = Math.random();
+    if (w >= 4 && r < 0.12) out.push('shielder');
+    else if (w >= 5 && r < 0.2) out.push('freezer');
+    else if (w >= 3 && r < 0.34) out.push('heavy');
+    else if (w >= 2 && r < 0.5) out.push('runner');
+    else out.push('grunt');
+  }
+  if (w % BRUTE_WAVE_INTERVAL === 0) out.push('brute');
+  return out;
 }
 
 /** Build the spawn queue for the next wave and enter the spawning phase. */
@@ -102,29 +149,21 @@ export function startNextWave(run: RunState): void {
   const count = Math.ceil(
     WAVE_BASE_ENEMY_COUNT * Math.pow(WAVE_COUNT_GROWTH, w - 1) * run.difficultyMult,
   );
-  const hp = ENEMY_BASE_HP * Math.pow(WAVE_HP_GROWTH, w - 1) * run.difficultyMult;
-  const speed = ENEMY_BASE_SPEED * Math.pow(WAVE_SPEED_GROWTH, w - 1);
-  const tierId = waveTier(w);
+  run.waveSpeedBase = ENEMY_BASE_SPEED * Math.pow(WAVE_SPEED_GROWTH, w - 1);
+  run.waveMassScale = Math.pow(WAVE_MASS_GROWTH, w - 1) * run.difficultyMult;
 
-  run.spawnQueue = [];
-  for (let i = 0; i < count; i++) {
-    run.spawnQueue.push({ hp, speed, tierId });
-  }
+  run.spawnQueue = waveComposition(w, count).map((kindId) => ({ kindId }));
   run.spawnTimerMs = 0;
   run.phase = 'spawning';
 }
 
-/** Advance the run by `dtMs`. Returns `defeated: true` on the frame the base falls. */
+/** Advance the run by `dtMs`. Tower forces must be applied by the caller first. */
 export function tickRun(run: RunState, dtMs: number): { defeated: boolean } {
   if (run.phase === 'defeat') return { defeated: false };
 
-  const dtSec = dtMs / 1000;
-
   if (run.phase === 'intermission') {
     run.intermissionTimerMs -= dtMs;
-    if (run.intermissionTimerMs <= 0) {
-      startNextWave(run);
-    }
+    if (run.intermissionTimerMs <= 0) startNextWave(run);
   }
 
   if (run.phase === 'spawning') {
@@ -132,23 +171,53 @@ export function tickRun(run: RunState, dtMs: number): { defeated: boolean } {
     while (run.spawnTimerMs <= 0 && run.spawnQueue.length > 0) {
       const q = run.spawnQueue.shift()!;
       run.enemies.push(
-        spawnEnemy(run.nextEnemyId++, run.waypointsPx, q.hp, q.speed, q.tierId),
+        spawnEnemy(
+          run.nextEnemyId++,
+          q.kindId,
+          run.geo,
+          run.waveSpeedBase,
+          run.waveMassScale,
+        ),
       );
       run.spawnTimerMs += WAVE_SPAWN_INTERVAL_MS;
     }
-    if (run.spawnQueue.length === 0) {
-      run.phase = 'wave-active';
-    }
+    if (run.spawnQueue.length === 0) run.phase = 'wave-active';
   }
 
-  // Move enemies; handle base contact.
+  applyShieldAura(run.enemies);
+
   for (const e of run.enemies) {
     if (e.dead) continue;
-    const { reachedBase } = advanceEnemy(e, run.waypointsPx, dtSec);
-    if (reachedBase) {
+
+    // Freezer self-freeze cycle.
+    const def = ENEMY_KIND_BY_ID.get(e.kindId);
+    if (def?.selfFreeze && e.frozenMs <= 0) {
+      e.freezeCooldownMs -= dtMs;
+      if (e.freezeCooldownMs <= 0) {
+        e.frozenMs = def.selfFreeze.durationMs;
+        e.freezeCooldownMs = def.selfFreeze.everyMs;
+      }
+    }
+
+    const res = stepEnemy(e, run.geo, dtMs);
+    if (res.offTrack) {
+      e.dead = true;
+      run.money += Math.round(e.bounty);
+      run.deathFx.push({
+        x: e.x,
+        y: e.y,
+        tierId: KIND_FX_TIER[e.kindId],
+        big: e.kindId === 'brute',
+      });
+    } else if (res.reachedBase) {
       e.dead = true;
       run.baseHealth -= ENEMY_BASE_DAMAGE;
-      run.deathFx.push({ x: run.basePos.x, y: run.basePos.y, tierId: e.tierId });
+      run.deathFx.push({
+        x: run.basePos.x,
+        y: run.basePos.y,
+        tierId: KIND_FX_TIER[e.kindId],
+        big: e.kindId === 'brute',
+      });
     }
   }
   if (run.enemies.some((e) => e.dead)) {
@@ -161,13 +230,13 @@ export function tickRun(run: RunState, dtMs: number): { defeated: boolean } {
     return { defeated: true };
   }
 
-  // Wave cleared?
   if (
     run.phase === 'wave-active' &&
     run.enemies.length === 0 &&
     run.spawnQueue.length === 0
   ) {
     run.highestWaveThisRun = Math.max(run.highestWaveThisRun, run.waveIndex);
+    run.money += WAVE_CLEAR_BONUS;
     run.phase = 'intermission';
     run.intermissionTimerMs = WAVE_INTERMISSION_MS;
   }

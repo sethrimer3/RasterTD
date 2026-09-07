@@ -2,6 +2,8 @@ import type { TierId } from '../data/tiers';
 import { TIERS } from '../data/tiers';
 import { LEVEL_BY_ID, type LevelId } from '../data/levels';
 import type { PrestigeUpgradeId } from '../data/prestige';
+import type { TowerTypeId } from '../data/towers';
+import { TOWER_DEF_BY_ID } from '../data/towers';
 import { SPAWNER_GRAVITY_RADIUS } from '../data/particles/particle-config';
 import {
   createGameCanvas,
@@ -16,6 +18,9 @@ import {
   drawPath,
   drawBase,
   drawEnemies,
+  drawTowers,
+  drawPlacementGhost,
+  drawTowerFx,
   drawRunHud,
 } from '../render';
 import { preloadGeneratorSprites } from '../render/generators/generator-renderer';
@@ -56,14 +61,24 @@ import {
   createRun,
   tickRun,
   resolveWaypointsPx,
+  rebuildRunGeometry,
   type RunState,
 } from '../sim/run';
+import { applyShieldAura } from '../sim/enemies';
+import {
+  applyTowerForces,
+  canPlaceTower,
+  createTower,
+  type TowerMods,
+} from '../sim/towers';
 import {
   awardRun,
   baseHealthBonus,
   tryBuyPrestigeUpgrade,
   isLevelUnlocked,
+  upgradeEffectTotal,
 } from '../sim/prestige';
+import type { RunUiState } from '../ui/panels';
 
 // ─── App state ──────────────────────────────────────────────────
 
@@ -83,6 +98,13 @@ interface AppState {
   forge: ForgeCrunchState;
   generatorState: GeneratorState;
   particleDrag: ParticleDragState;
+  /** Tower type currently being placed, if any. */
+  placingTypeId: TowerTypeId | null;
+  selectedTowerId: number | null;
+  /** Active drag to aim a directional tower. */
+  aimDrag: { towerId: number; isNew: boolean; x: number; y: number } | null;
+  /** Last pointer position on the field (for the placement ghost). */
+  lastPointer: { x: number; y: number };
 }
 
 const FLASH_MS = 180;
@@ -121,6 +143,10 @@ export async function startApp(): Promise<void> {
     forge: createForgeCrunchState(),
     generatorState: createGeneratorState(),
     particleDrag: createParticleDragState(),
+    placingTypeId: null,
+    selectedTowerId: null,
+    aimDrag: null,
+    lastPointer: { x: 0, y: 0 },
   };
 
   // ── Ambient background ──
@@ -164,8 +190,18 @@ export async function startApp(): Promise<void> {
   const tabBar = createTabBar(dispatch);
   root.appendChild(tabBar.element);
 
+  const runUi = (): RunUiState => ({
+    placingTypeId: appState.placingTypeId,
+    selectedTowerId: appState.selectedTowerId,
+  });
+  const towerMods = (): TowerMods => ({
+    damageMult: 1 + upgradeEffectTotal(appState.meta.prestige, 'tower_damage'),
+    rangeMult: 1 + upgradeEffectTotal(appState.meta.prestige, 'tower_range'),
+    fireRateMult: 1 + upgradeEffectTotal(appState.meta.prestige, 'tower_fire_rate'),
+  });
+
   prestigePanel.update(appState.meta.prestige);
-  runPanel.update(appState.run);
+  runPanel.update(appState.run, runUi());
   syncScreen(appState);
   setActiveTab(appState);
 
@@ -181,27 +217,95 @@ export async function startApp(): Promise<void> {
     };
   };
 
+  const towerAt = (run: RunState, x: number, y: number): number | null => {
+    let bestId: number | null = null;
+    let bestD = 8;
+    for (const t of run.towers) {
+      const d = Math.hypot(t.x - x, t.y - y);
+      if (d < bestD) { bestD = d; bestId = t.id; }
+    }
+    return bestId;
+  };
+
   cc.canvas.addEventListener('pointerdown', (e: PointerEvent) => {
     const pos = getCanvasCoords(e);
+    appState.lastPointer = pos;
+
     if (appState.screen === 'levels') {
       const hit = hitTestLevelNode(cc, pos.x, pos.y);
       if (hit) {
         dispatch({ kind: 'select_level', levelId: hit });
         return;
       }
+      handleParticleDragDown(
+        appState.particleDrag, pos.x, pos.y, e.timeStamp,
+        particles.particles, cc.widthPx, cc.heightPx,
+      );
+      return;
     }
-    handleParticleDragDown(
-      appState.particleDrag, pos.x, pos.y, e.timeStamp,
-      particles.particles, cc.widthPx, cc.heightPx,
-    );
+
+    const run = appState.run;
+    if (!run || run.phase === 'defeat') return;
+
+    if (appState.placingTypeId) {
+      const def = TOWER_DEF_BY_ID.get(appState.placingTypeId);
+      if (!def) return;
+      const ok =
+        canPlaceTower(run.towers, run.geo, pos.x, pos.y, cc.widthPx, cc.heightPx) &&
+        run.money >= def.cost;
+      if (!ok) return;
+      if (def.directional) {
+        appState.aimDrag = { towerId: -1, isNew: true, x: pos.x, y: pos.y };
+      } else {
+        dispatch({ kind: 'place_tower', x: pos.x, y: pos.y, orientationRad: 0 });
+      }
+      return;
+    }
+
+    const hitId = towerAt(run, pos.x, pos.y);
+    dispatch({ kind: 'select_tower', towerId: hitId });
+    if (hitId != null) {
+      const t = run.towers.find((tw) => tw.id === hitId)!;
+      const def = TOWER_DEF_BY_ID.get(t.typeId);
+      if (def?.directional) {
+        appState.aimDrag = { towerId: hitId, isNew: false, x: t.x, y: t.y };
+      }
+    }
   });
+
   cc.canvas.addEventListener('pointermove', (e: PointerEvent) => {
-    if (!appState.particleDrag.isDown) return;
     const pos = getCanvasCoords(e);
-    handleParticleDragMove(appState.particleDrag, pos.x, pos.y, e.timeStamp, particles.particles);
+    appState.lastPointer = pos;
+
+    if (appState.aimDrag && !appState.aimDrag.isNew) {
+      const a = appState.aimDrag;
+      dispatch({
+        kind: 'aim_tower',
+        towerId: a.towerId,
+        orientationRad: Math.atan2(pos.y - a.y, pos.x - a.x),
+      });
+      return;
+    }
+    if (appState.screen === 'levels' && appState.particleDrag.isDown) {
+      handleParticleDragMove(appState.particleDrag, pos.x, pos.y, e.timeStamp, particles.particles);
+    }
   });
+
   const endDrag = (e: PointerEvent): void => {
     const pos = getCanvasCoords(e);
+    appState.lastPointer = pos;
+
+    if (appState.aimDrag) {
+      const a = appState.aimDrag;
+      const ang = Math.atan2(pos.y - a.y, pos.x - a.x);
+      if (a.isNew) {
+        dispatch({ kind: 'place_tower', x: a.x, y: a.y, orientationRad: ang });
+      } else {
+        dispatch({ kind: 'aim_tower', towerId: a.towerId, orientationRad: ang });
+      }
+      appState.aimDrag = null;
+      return;
+    }
     handleParticleDragUp(appState.particleDrag, pos.x, pos.y, e.timeStamp, particles.particles);
   };
   cc.canvas.addEventListener('pointerup', endDrag);
@@ -220,8 +324,7 @@ export async function startApp(): Promise<void> {
     if (run) {
       const level = LEVEL_BY_ID.get(run.levelId as LevelId);
       if (level) {
-        run.waypointsPx = resolveWaypointsPx(level, cc.widthPx, cc.heightPx);
-        run.basePos = run.waypointsPx[run.waypointsPx.length - 1]!;
+        rebuildRunGeometry(run, resolveWaypointsPx(level, cc.widthPx, cc.heightPx));
       }
     }
   };
@@ -245,10 +348,13 @@ export async function startApp(): Promise<void> {
         state.run = createRun(
           level, cc.widthPx, cc.heightPx, baseHealthBonus(state.meta.prestige),
         );
+        state.placingTypeId = null;
+        state.selectedTowerId = null;
+        state.aimDrag = null;
         state.activeTab = 'run';
         syncScreen(state);
         setActiveTab(state);
-        runPanel.update(state.run);
+        runPanel.update(state.run, runUi());
         break;
       }
 
@@ -257,6 +363,61 @@ export async function startApp(): Promise<void> {
           state.run.intermissionTimerMs = 0;
         }
         break;
+
+      case 'begin_place_tower':
+        state.placingTypeId = action.typeId as TowerTypeId;
+        state.selectedTowerId = null;
+        runPanel.update(state.run, runUi());
+        break;
+
+      case 'cancel_placement':
+        state.placingTypeId = null;
+        state.aimDrag = null;
+        runPanel.update(state.run, runUi());
+        break;
+
+      case 'place_tower': {
+        const run = state.run;
+        const typeId = state.placingTypeId;
+        if (!run || !typeId) break;
+        const def = TOWER_DEF_BY_ID.get(typeId);
+        if (!def) break;
+        if (
+          run.money < def.cost ||
+          !canPlaceTower(run.towers, run.geo, action.x, action.y, cc.widthPx, cc.heightPx)
+        ) break;
+        run.towers.push(
+          createTower(run.nextTowerId++, typeId, action.x, action.y, action.orientationRad),
+        );
+        run.money -= def.cost;
+        if (run.money < def.cost) state.placingTypeId = null;
+        runPanel.update(run, runUi());
+        break;
+      }
+
+      case 'select_tower':
+        state.selectedTowerId = action.towerId;
+        runPanel.update(state.run, runUi());
+        break;
+
+      case 'aim_tower': {
+        const t = state.run?.towers.find((tw) => tw.id === action.towerId);
+        if (t) t.orientationRad = action.orientationRad;
+        break;
+      }
+
+      case 'sell_tower': {
+        const run = state.run;
+        if (!run) break;
+        const idx = run.towers.findIndex((t) => t.id === action.towerId);
+        if (idx < 0) break;
+        const def = TOWER_DEF_BY_ID.get(run.towers[idx]!.typeId);
+        if (def) run.money += Math.floor(def.cost * 0.5);
+        run.towers.splice(idx, 1);
+        state.selectedTowerId = null;
+        runPanel.update(run, runUi());
+        break;
+      }
 
       case 'retreat_run': {
         const run = state.run;
@@ -274,11 +435,14 @@ export async function startApp(): Promise<void> {
           }
         }
         state.run = null;
+        state.placingTypeId = null;
+        state.selectedTowerId = null;
+        state.aimDrag = null;
         state.activeTab = 'levels';
         syncScreen(state);
         setActiveTab(state);
         prestigePanel.update(state.meta.prestige);
-        runPanel.update(null);
+        runPanel.update(null, runUi());
         break;
       }
 
@@ -293,11 +457,14 @@ export async function startApp(): Promise<void> {
         deleteSave();
         state.meta = createMetaState();
         state.run = null;
+        state.placingTypeId = null;
+        state.selectedTowerId = null;
+        state.aimDrag = null;
         state.activeTab = 'levels';
         syncScreen(state);
         setActiveTab(state);
         prestigePanel.update(state.meta.prestige);
-        runPanel.update(null);
+        runPanel.update(null, runUi());
         break;
     }
   }
@@ -313,7 +480,7 @@ export async function startApp(): Promise<void> {
     runHudContainer.style.display = state.activeTab === 'run' ? '' : 'none';
     prestigePanel.element.style.display = state.activeTab === 'prestige' ? '' : 'none';
     settingsPanel.element.style.display = state.activeTab === 'settings' ? '' : 'none';
-    if (state.activeTab === 'run') runPanel.update(state.run);
+    if (state.activeTab === 'run') runPanel.update(state.run, runUi());
     if (state.activeTab === 'prestige') prestigePanel.update(state.meta.prestige);
   }
 
@@ -345,15 +512,19 @@ export async function startApp(): Promise<void> {
     if (appState.screen === 'run' && appState.run) {
       const run = appState.run;
       const wasDefeat = run.phase === 'defeat';
+      if (run.phase !== 'defeat') {
+        applyShieldAura(run.enemies);
+        applyTowerForces(run.towers, run.enemies, run.geo, deltaMs, towerMods(), nowMs, run.fx);
+      }
       tickRun(run, deltaMs);
       while (run.deathFx.length > 0) {
         const fx = run.deathFx.shift()!;
-        particles.emitAtPosition(fx.x, fx.y, 12, fx.tierId, nowMs);
+        particles.emitAtPosition(fx.x, fx.y, fx.big ? 26 : 12, fx.tierId, nowMs);
         appState.flashes.push({ x: fx.x, y: fx.y, bornMs: nowMs });
       }
       if (!wasDefeat && run.phase === 'defeat') {
         saveGame(appState.meta);
-        runPanel.update(run);
+        runPanel.update(run, runUi());
       }
     }
 
@@ -382,10 +553,26 @@ export async function startApp(): Promise<void> {
       drawForge(cc, centerX, centerY, particles.forgeRotation, appState.forge, nowMs);
       drawLevelMap(cc, appState.meta.prestige, hitTestHover());
     } else if (appState.run) {
-      drawPath(cc, appState.run.waypointsPx);
-      drawBase(cc, appState.run.basePos, appState.run.baseHealth, appState.run.baseMaxHealth);
-      drawEnemies(cc, appState.run);
-      drawRunHud(cc, appState.run);
+      const run = appState.run;
+      drawPath(cc, run.waypointsPx);
+      drawBase(cc, run.basePos, run.baseHealth, run.baseMaxHealth);
+      drawTowers(cc, run.towers, appState.selectedTowerId, towerMods());
+      drawEnemies(cc, run);
+      drawTowerFx(cc, run.fx, nowMs);
+      if (appState.placingTypeId) {
+        const p = appState.lastPointer;
+        const aim = appState.aimDrag;
+        const ang = aim
+          ? Math.atan2(p.y - aim.y, p.x - aim.x)
+          : 0;
+        const ghostX = aim ? aim.x : p.x;
+        const ghostY = aim ? aim.y : p.y;
+        const valid =
+          canPlaceTower(run.towers, run.geo, ghostX, ghostY, cc.widthPx, cc.heightPx) &&
+          run.money >= (TOWER_DEF_BY_ID.get(appState.placingTypeId)?.cost ?? Infinity);
+        drawPlacementGhost(cc, appState.placingTypeId, ghostX, ghostY, ang, valid, towerMods());
+      }
+      drawRunHud(cc, run);
     }
 
     particles.draw(cc);
@@ -394,7 +581,7 @@ export async function startApp(): Promise<void> {
 
     if (nowMs - lastHudMs > 200) {
       lastHudMs = nowMs;
-      if (appState.activeTab === 'run') runPanel.update(appState.run);
+      if (appState.activeTab === 'run') runPanel.update(appState.run, runUi());
     }
 
     requestAnimationFrame(gameLoop);

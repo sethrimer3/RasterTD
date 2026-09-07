@@ -1,1 +1,9 @@
-export { drawPath, drawBase, drawEnemies, drawRunHud } from './run-renderer';
+export {
+  drawPath,
+  drawBase,
+  drawTowers,
+  drawPlacementGhost,
+  drawEnemies,
+  drawTowerFx,
+  drawRunHud,
+} from './run-renderer';

@@ -364,6 +364,48 @@ html, body {
   margin-top: 6px;
 }
 
+.build-bar {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 4px 0;
+  -webkit-overflow-scrolling: touch;
+}
+
+.build-btn {
+  flex: 0 0 auto;
+  min-width: 56px;
+  padding: 6px 8px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  font-family: var(--font-primary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: pre-line;
+  text-align: center;
+  cursor: pointer;
+}
+
+.build-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.build-btn.selected {
+  border-color: var(--accent);
+  background: rgba(201, 168, 76, 0.15);
+}
+
+.run-hint {
+  font-size: 11px;
+  color: var(--accent);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+
 /* ── Tab bar (bottom, always visible) ────────────────────────── */
 .tab-bar {
   position: absolute;
